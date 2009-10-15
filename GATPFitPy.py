@@ -30,7 +30,6 @@ def CpFit(atoms, rotors, linearity, t, cp):
     (a0, a1, a2, a3) = WilhoitFit(t, cp, cp0, cpInf, B)
     print [a0, a1, a2, a3]
     (b1, b2, b3, b4, b5, b6, b7, b8, b9, b10, tint) = Wilhoit2NASA_TintOpt(cp0, cpInf, B, a0, a1, a2, a3, Tmin, Tmax, Tintg)
-
     #restore to conventional units of K for Tint and units based on K rather than kK in NASA polynomial coefficients
     tint=tint*1000.
     b2 = b2/1000.
@@ -44,6 +43,42 @@ def CpFit(atoms, rotors, linearity, t, cp):
 
     return b1, b2, b3, b4, b5, b6, b7, b8, b9, b10, tint
 
+def CpFitFixedTint(atoms, rotors, linearity, t, cp):
+    #the "main" function with Tint fixed; eventually I will need to add routines for S, Hf, but these should be simple post-processing steps, as each should involve two equations and two unknowns
+    #input: number of atoms, number of rotors, and linearity (0 for non-linear, 1 for linear), vector of temperatures, t (in Kelvin), corresponding vector of Cp (cal/mol-K)
+    #output: NASA parameters for Cp/R, b1, b2, b3, b4, b5 (low temp parameters) and b6, b7, b8, b9, b10 (high temp parameters), and Tint
+    R = 1.9872 #cal/mol-K
+    B = 500. #K
+    Tmin = 300. #K
+    Tmax = 6000. #K
+    Tintg = 1000. #K
+
+    #convert from K to kK
+    t = [x/1000. for x in t] 
+    B = B/1000. 
+    Tmin = Tmin/1000. 
+    Tmax = Tmax/1000. 
+    Tintg = Tintg/1000.
+
+    cp = [x/R for x in cp] #convert to Cp/R
+    (cp0, cpInf)=CpLimits(atoms, rotors, linearity)
+    (a0, a1, a2, a3) = WilhoitFit(t, cp, cp0, cpInf, B)
+    print [a0, a1, a2, a3]
+    #(b1, b2, b3, b4, b5, b6, b7, b8, b9, b10, tint) = Wilhoit2NASA_TintOpt(cp0, cpInf, B, a0, a1, a2, a3, Tmin, Tmax, Tintg)
+    (b1, b2, b3, b4, b5, b6, b7, b8, b9, b10) = Wilhoit2NASA(cp0, cpInf, B, a0, a1, a2, a3, Tmin, Tmax, Tintg)
+    #restore to conventional units of K for Tint and units based on K rather than kK in NASA polynomial coefficients
+    #tint=tint*1000.
+    b2 = b2/1000.
+    b7 = b7/1000.
+    b3 = b3/1000000.
+    b8 = b8/1000000.
+    b4 = b4/1000000000.
+    b9 = b9/1000000000.
+    b5 = b5/1000000000000.
+    b10= b10/1000000000000.
+
+    #return b1, b2, b3, b4, b5, b6, b7, b8, b9, b10, tint
+    return b1, b2, b3, b4, b5, b6, b7, b8, b9, b10
 
 def CpLimits(atoms, rotors, linearity):
     #(based off of lsfp_wilh1.f in GATPFit)
@@ -68,7 +103,7 @@ def CpLimits(atoms, rotors, linearity):
 
 def WilhoitFit(t, cp, cp0, cpInf, B):
     #input: vector of temperatures, t (in kiloKelvin), corresponding vector of Cp/R, Cp0/R, CpInf/R, and B parameter in y=t/t+B (in kiloKelvin; will typically be 0.5)
-    #output: fitted Wilhoit parameters, a0(/R), a1(/R), a2(/R), a3(/R)
+    #output: fitted Wilhoit parameters, a0, a1, a2, a3
 
     m = len(t)
 
@@ -98,7 +133,7 @@ def WilhoitFit(t, cp, cp0, cpInf, B):
     return a0, a1, a2, a3
 
 def Wilhoit2NASA(cp0, cpInf, B, a0, a1, a2, a3, tmin, tmax, tint):
-    #input: Wilhoit parameters, Cp0/R, CpInf/R, and B (kK), a0(/R), a1(/R), a2(/R), a3(/R), Tmin (minimum temperature (in kiloKelvin), Tmax (maximum temperature (in kiloKelvin), Tint (intermediate temperature, in kiloKelvin)
+    #input: Wilhoit parameters, Cp0/R, CpInf/R, and B (kK), a0, a1, a2, a3, Tmin (minimum temperature (in kiloKelvin), Tmax (maximum temperature (in kiloKelvin), Tint (intermediate temperature, in kiloKelvin)
     #output: NASA parameters for Cp/R, b1, b2, b3, b4, b5 (low temp parameters) and b6, b7, b8, b9, b10 (high temp parameters)
 
     #construct 13*13 symmetric A matrix (in A*x = b); other elements will be zero
@@ -164,8 +199,8 @@ def Wilhoit2NASA(cp0, cpInf, B, a0, a1, a2, a3, tmin, tmax, tint):
     A[9,12] = -A[4,12]
 
     # make the matrix symmetric
-    for i in range(1,12):
-        for j in range(0, i-1):
+    for i in range(1,13):
+        for j in range(0, i):
             A[i,j] = A[j,i]
 
     #construct b vector
@@ -192,7 +227,7 @@ def Wilhoit2NASA(cp0, cpInf, B, a0, a1, a2, a3, tmin, tmax, tint):
 
     #solve A*x=b for x (note that factor of 2 in b vector and 10*10 submatrix of A matrix is not required; not including it should give same result, except Lagrange multipliers will differ by a factor of two)
     #from linalg import solve
-    print A
+    #print A
     x = linalg.solve(A,b,overwrite_a=1,overwrite_b=1)
     b1 = x[0]
     b2 = x[1]
@@ -208,11 +243,12 @@ def Wilhoit2NASA(cp0, cpInf, B, a0, a1, a2, a3, tmin, tmax, tint):
     return b1, b2, b3, b4, b5, b6, b7, b8, b9, b10
     
 def Wilhoit2NASA_TintOpt(cp0, cpInf, B, a0, a1, a2, a3, tmin, tmax, tintg):
-    #input: Wilhoit parameters, Cp0/R, CpInf/R, and B (kK), a0(/R), a1(/R), a2(/R), a3(/R), Tmin (minimum temperature (in kiloKelvin), Tmax (maximum temperature (in kiloKelvin), Tintg (guess intermediate temperature, in kiloKelvin)
+    #input: Wilhoit parameters, Cp0/R, CpInf/R, and B (kK), a0, a1, a2, a3, Tmin (minimum temperature (in kiloKelvin), Tmax (maximum temperature (in kiloKelvin), Tintg (guess intermediate temperature, in kiloKelvin)
     #output: NASA parameters for Cp/R, b1, b2, b3, b4, b5 (low temp parameters) and b6, b7, b8, b9, b10 (high temp parameters), and Tint
     #1. vary Tint, using Tintg as a starting guess, to minimize TintOpt_objFun
     #from optimize import fminbound
-    tint, extraStuff = optimize.fminbound(TintOpt_objFun, tmin+0.2, tmax-0.5, args=(cp0, cpInf,B,a0,a1,a2,a3,tmin,tmax))
+    #tint = optimize.fminbound(TintOpt_objFun, tmin+0.2, tmax-0.5, args=(cp0, cpInf,B,a0,a1,a2,a3,tmin,tmax))
+    tint = optimize.fminbound(TintOpt_objFun, tmin, tmax, args=(cp0, cpInf,B,a0,a1,a2,a3,tmin,tmax))
     #note that we have not used the specified guess, tintg when using this minimization routine
     #2. determine the bi parameters based on the optimized Tint (alternatively, maybe we could have TintOpt_objFun also return these parameters, along with the objective function, which would avoid an extra calculation)
     (b1, b2, b3, b4, b5, b6, b7, b8, b9, b10) = Wilhoit2NASA(cp0,cpInf,B,a0,a1,a2,a3,tmin,tmax,tint)
@@ -220,22 +256,23 @@ def Wilhoit2NASA_TintOpt(cp0, cpInf, B, a0, a1, a2, a3, tmin, tmax, tintg):
     return b1, b2, b3, b4, b5, b6, b7, b8, b9, b10, tint
                                                                                                     
 def TintOpt_objFun(tint, cp0, cpInf, B, a0, a1, a2, a3, tmin, tmax):
-        #input: Tint (intermediate temperature, in kiloKelvin); Wilhoit parameters, Cp0/R, CpInf/R, and B (kK), a0(/R), a1(/R), a2(/R), a3(/R), Tmin (minimum temperature (in kiloKelvin), Tmax (maximum temperature (in kiloKelvin)
-        #output: the quantity Integrate[(Cp(Wilhoit)/R-Cp(NASA)/R)^2, {t, tmin, tmax}]
-        (b1, b2, b3, b4, b5, b6, b7, b8, b9, b10) = Wilhoit2NASA(cp0,cpInf,B,a0,a1,a2,a3,tmin,tmax,tint)
-        result = (Wilhoit2Int(cp0,cpInf,B,a0,a1,a2,a3,tmax) - Wilhoit2Int(cp0,cpInf,B,a0,a1,a2,a3,tmin) +
-                 NASA2Int(b1,b2,b3,b4,b5,tint)-NASA2Int(b1,b2,b3,b4,b5,tmin) + NASA2Int(b6,b7,b8,b9,b10,tmax) - NASA2Int(b6,b7,b8,b9,b10,tmin)
+	#input: Tint (intermediate temperature, in kiloKelvin); Wilhoit parameters, Cp0/R, CpInf/R, and B (kK), a0, a1, a2, a3, Tmin (minimum temperature (in kiloKelvin), Tmax (maximum temperature (in kiloKelvin)
+	#output: the quantity Integrate[(Cp(Wilhoit)/R-Cp(NASA)/R)^2, {t, tmin, tmax}]
+	(b1, b2, b3, b4, b5, b6, b7, b8, b9, b10) = Wilhoit2NASA(cp0,cpInf,B,a0,a1,a2,a3,tmin,tmax,tint)
+	result = (Wilhoit2Int(cp0,cpInf,B,a0,a1,a2,a3,tmax) - Wilhoit2Int(cp0,cpInf,B,a0,a1,a2,a3,tmin) +
+                 NASA2Int(b1,b2,b3,b4,b5,tint)-NASA2Int(b1,b2,b3,b4,b5,tmin) + NASA2Int(b6,b7,b8,b9,b10,tmax) - NASA2Int(b6,b7,b8,b9,b10,tint)
                    - 2* (b6*WilhoitInt0(cp0,cpInf,B,a0,a1,a2,a3,tmax)+(b1-b6)*WilhoitInt0(cp0,cpInf,B,a0,a1,a2,a3,tint) - b1*WilhoitInt0(cp0,cpInf,B,a0,a1,a2,a3,tmin)
                  +b7*WilhoitInt1(cp0,cpInf,B,a0,a1,a2,a3,tmax)+(b2-b7)*WilhoitInt1(cp0,cpInf,B,a0,a1,a2,a3,tint) - b2*WilhoitInt1(cp0,cpInf,B,a0,a1,a2,a3,tmin)
                  +b8*WilhoitInt2(cp0,cpInf,B,a0,a1,a2,a3,tmax)+(b3-b8)*WilhoitInt2(cp0,cpInf,B,a0,a1,a2,a3,tint) - b3*WilhoitInt2(cp0,cpInf,B,a0,a1,a2,a3,tmin)
                  +b9*WilhoitInt3(cp0,cpInf,B,a0,a1,a2,a3,tmax)+(b4-b9)*WilhoitInt3(cp0,cpInf,B,a0,a1,a2,a3,tint) - b4*WilhoitInt3(cp0,cpInf,B,a0,a1,a2,a3,tmin)
                  +b10*WilhoitInt4(cp0,cpInf,B,a0,a1,a2,a3,tmax)+(b5-b10)*WilhoitInt4(cp0,cpInf,B,a0,a1,a2,a3,tint) - b5*WilhoitInt4(cp0,cpInf,B,a0,a1,a2,a3,tmin)))
-        return result
+	print tint
+	return result
 
 
 #analytical integrals:
 
-#input (for all functions WilhoitXIntN): Wilhoit parameters: Cp0(/R), CpInf(/R), B, a0(/R), a1(/R), a2(/R), a3(/R) and t (in kiloKelvin)
+#input (for all functions WilhoitXIntN): Wilhoit parameters: Cp0(/R), CpInf(/R), B, a0, a1, a2, a3 and t (in kiloKelvin)
 
 def WilhoitInt0(cp0, cpInf, B, a0, a1, a2, a3, t):
     #output: the quantity Integrate[Cp(Wilhoit)/R, t'] evaluated at t'=t
