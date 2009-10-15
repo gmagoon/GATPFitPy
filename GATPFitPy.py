@@ -26,11 +26,17 @@ def CpFit(atoms, rotors, linearity, t, cp):
     Tintg = Tintg/1000.
 
     cp = [x/R for x in cp] #convert to Cp/R
+
     (cp0, cpInf)=CpLimits(atoms, rotors, linearity)
     (a0, a1, a2, a3) = WilhoitFit(t, cp, cp0, cpInf, B)
-    print [a0, a1, a2, a3]
+    #print [a0, a1, a2, a3]
+    print rmsErrWilhoit(t, cp, cp0, cpInf, B, a0, a1, a2, a3)
+
     (b1, b2, b3, b4, b5, b6, b7, b8, b9, b10, tint) = Wilhoit2NASA_TintOpt(cp0, cpInf, B, a0, a1, a2, a3, Tmin, Tmax, Tintg)
+    print rmsErrNASA(t, cp, b1, b2, b3, b4, b5, b6, b7, b8, b9, b10, tint)
+    
     #restore to conventional units of K for Tint and units based on K rather than kK in NASA polynomial coefficients
+    #t = [x*1000. for x in t] 
     tint=tint*1000.
     b2 = b2/1000.
     b7 = b7/1000.
@@ -40,6 +46,8 @@ def CpFit(atoms, rotors, linearity, t, cp):
     b9 = b9/1000000000.
     b5 = b5/1000000000000.
     b10= b10/1000000000000.
+    
+
 
     return b1, b2, b3, b4, b5, b6, b7, b8, b9, b10, tint
 
@@ -63,11 +71,17 @@ def CpFitFixedTint(atoms, rotors, linearity, t, cp):
     cp = [x/R for x in cp] #convert to Cp/R
     (cp0, cpInf)=CpLimits(atoms, rotors, linearity)
     (a0, a1, a2, a3) = WilhoitFit(t, cp, cp0, cpInf, B)
-    print [a0, a1, a2, a3]
+    #print [a0, a1, a2, a3]
+    print rmsErrWilhoit(t, cp, cp0, cpInf, B, a0, a1, a2, a3)
+
     #(b1, b2, b3, b4, b5, b6, b7, b8, b9, b10, tint) = Wilhoit2NASA_TintOpt(cp0, cpInf, B, a0, a1, a2, a3, Tmin, Tmax, Tintg)
     (b1, b2, b3, b4, b5, b6, b7, b8, b9, b10) = Wilhoit2NASA(cp0, cpInf, B, a0, a1, a2, a3, Tmin, Tmax, Tintg)
+    TintOpt_objFun(Tintg, cp0, cpInf, B, a0, a1, a2, a3, Tmin, Tmax) #to print the objective function value
+    print rmsErrNASA(t, cp, b1, b2, b3, b4, b5, b6, b7, b8, b9, b10, Tintg) 
+
     #restore to conventional units of K for Tint and units based on K rather than kK in NASA polynomial coefficients
     #tint=tint*1000.
+    #t = [x*1000. for x in t] 
     b2 = b2/1000.
     b7 = b7/1000.
     b3 = b3/1000000.
@@ -77,8 +91,51 @@ def CpFitFixedTint(atoms, rotors, linearity, t, cp):
     b5 = b5/1000000000000.
     b10= b10/1000000000000.
 
+
+
     #return b1, b2, b3, b4, b5, b6, b7, b8, b9, b10, tint
     return b1, b2, b3, b4, b5, b6, b7, b8, b9, b10
+
+def rmsErrNASA(t, cp, b1, b2, b3, b4, b5, b6, b7, b8, b9, b10, tint):
+	#calculate the RMS error between the NASA polynomial and training data points in non-dimensional units (/R); cp is Cp/R; units of tint, t, and bi should be consistent, based, for example on kK or K 
+	m = len(t)
+	rms = 0.0
+	for i in range(m):
+		err = cp[i]-NASA_CpR(t[i],b1, b2, b3, b4, b5, b6, b7, b8, b9, b10, tint)
+		rms += err*err
+	rms = rms/m
+	rms = math.sqrt(rms)
+	
+	return rms
+
+def rmsErrWilhoit(t, cp, cp0, cpInf, B, a0, a1, a2, a3):
+	#calculate the RMS error between the Wilhoit form and training data points; result will have same units as cp inputs; cp, cp0, and cpInf should agree in units (e.g. Cp/R); units of B and t should be consistent, based, for example on kK or K 
+	m = len(t)
+	rms = 0.0
+	for i in range(m):
+		err = cp[i]-Wilhoit_Cp(t[i],cp0, cpInf, B, a0, a1, a2, a3)
+		rms += err*err
+	rms = rms/m
+	rms = math.sqrt(rms)
+	
+	return rms
+
+def NASA_CpR(t, b1, b2, b3, b4, b5, b6, b7, b8, b9, b10, tint):
+	#calculate Cp/R based on NASA polynomial; cp is Cp/R; units of tint, t, and bi should be consistent, based, for example on kK or K; does not take into account lower and upper temperature limits, and will extrapolate
+	if(t < tint):
+		cp = b1 + b2*t + b3*t*t + b4*t*t*t + b5*t*t*t*t
+	else:
+		cp = b6 + b7*t + b8*t*t + b9*t*t*t + b10*t*t*t*t
+	
+	return cp
+
+def Wilhoit_Cp(t, cp0, cpInf, B, a0, a1, a2, a3):
+	#calculate Cp/R based on Wilhoit form;  result will have same units as cp0 and cpInf (e.g. Cp/R); cp is Cp/R; units of B and t should be consistent, based, for example on kK or K
+	y = t/(t+B)
+	cp = cp0+(cpInf-cp0)*y*y*(1+(y-1)*(a0+a1*y+a2*y*y+a3*y*y*y))
+	
+	return cp
+
 
 def CpLimits(atoms, rotors, linearity):
     #(based off of lsfp_wilh1.f in GATPFit)
@@ -129,7 +186,7 @@ def WilhoitFit(t, cp, cp0, cpInf, B):
     a1 = x[1]
     a2 = x[2]
     a3 = x[3]
-
+    print resid
     return a0, a1, a2, a3
 
 def Wilhoit2NASA(cp0, cpInf, B, a0, a1, a2, a3, tmin, tmax, tint):
@@ -267,6 +324,7 @@ def TintOpt_objFun(tint, cp0, cpInf, B, a0, a1, a2, a3, tmin, tmax):
                  +b9*WilhoitInt3(cp0,cpInf,B,a0,a1,a2,a3,tmax)+(b4-b9)*WilhoitInt3(cp0,cpInf,B,a0,a1,a2,a3,tint) - b4*WilhoitInt3(cp0,cpInf,B,a0,a1,a2,a3,tmin)
                  +b10*WilhoitInt4(cp0,cpInf,B,a0,a1,a2,a3,tmax)+(b5-b10)*WilhoitInt4(cp0,cpInf,B,a0,a1,a2,a3,tint) - b5*WilhoitInt4(cp0,cpInf,B,a0,a1,a2,a3,tmin)))
 	print tint
+	print result
 	return result
 
 
