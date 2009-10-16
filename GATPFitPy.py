@@ -8,9 +8,11 @@ from scipy import optimize
 
 #class GATPFitPy:
     
-def CpFit(atoms, rotors, linearity, t, cp):
+def CpFit(atoms, rotors, linearity, t, cp, fixed, weighting):
     #the "main" function; eventually I will need to add routines for S, Hf, but these should be simple post-processing steps, as each should involve two equations and two unknowns
     #input: number of atoms, number of rotors, and linearity (0 for non-linear, 1 for linear), vector of temperatures, t (in Kelvin), corresponding vector of Cp (cal/mol-K)
+    #if fixed = 1, Tint will not be allowed to float; otherwise, tint will be allowed to float to minimize error
+    #if weighting = 1, (NOT SUPPORTED YET) the error in mapping from Wilhoit to NASA polynomial will be weighted by 1/T to place more importance on low temperature fitting; otherwise, no weighting will be used
     #output: NASA parameters for Cp/R, b1, b2, b3, b4, b5 (low temp parameters) and b6, b7, b8, b9, b10 (high temp parameters), and Tint
     R = 1.9872 #cal/mol-K
     B = 500. #K
@@ -32,7 +34,12 @@ def CpFit(atoms, rotors, linearity, t, cp):
     #print [a0, a1, a2, a3]
     print rmsErrWilhoit(t, cp, cp0, cpInf, B, a0, a1, a2, a3)
 
-    (b1, b2, b3, b4, b5, b6, b7, b8, b9, b10, tint) = Wilhoit2NASA_TintOpt(cp0, cpInf, B, a0, a1, a2, a3, Tmin, Tmax, Tintg)
+    #if we are using fixed tint, set tint equal to Tintg and do not allow tint to float
+    if(fixed == 1):
+    	(b1, b2, b3, b4, b5, b6, b7, b8, b9, b10) = Wilhoit2NASA(cp0, cpInf, B, a0, a1, a2, a3, Tmin, Tmax, Tintg)
+    	tint = Tintg
+    else:
+    	(b1, b2, b3, b4, b5, b6, b7, b8, b9, b10, tint) = Wilhoit2NASA_TintOpt(cp0, cpInf, B, a0, a1, a2, a3, Tmin, Tmax, Tintg)
     print rmsErrNASA(t, cp, b1, b2, b3, b4, b5, b6, b7, b8, b9, b10, tint)
     
     #restore to conventional units of K for Tint and units based on K rather than kK in NASA polynomial coefficients
@@ -47,54 +54,7 @@ def CpFit(atoms, rotors, linearity, t, cp):
     b5 = b5/1000000000000.
     b10= b10/1000000000000.
     
-
-
     return b1, b2, b3, b4, b5, b6, b7, b8, b9, b10, tint
-
-def CpFitFixedTint(atoms, rotors, linearity, t, cp):
-    #the "main" function with Tint fixed; eventually I will need to add routines for S, Hf, but these should be simple post-processing steps, as each should involve two equations and two unknowns
-    #input: number of atoms, number of rotors, and linearity (0 for non-linear, 1 for linear), vector of temperatures, t (in Kelvin), corresponding vector of Cp (cal/mol-K)
-    #output: NASA parameters for Cp/R, b1, b2, b3, b4, b5 (low temp parameters) and b6, b7, b8, b9, b10 (high temp parameters), and Tint
-    R = 1.9872 #cal/mol-K
-    B = 500. #K
-    Tmin = 300. #K
-    Tmax = 6000. #K
-    Tintg = 1000. #K
-
-    #convert from K to kK
-    t = [x/1000. for x in t] 
-    B = B/1000. 
-    Tmin = Tmin/1000. 
-    Tmax = Tmax/1000. 
-    Tintg = Tintg/1000.
-
-    cp = [x/R for x in cp] #convert to Cp/R
-    (cp0, cpInf)=CpLimits(atoms, rotors, linearity)
-    (a0, a1, a2, a3) = WilhoitFit(t, cp, cp0, cpInf, B)
-    #print [a0, a1, a2, a3]
-    print rmsErrWilhoit(t, cp, cp0, cpInf, B, a0, a1, a2, a3)
-
-    #(b1, b2, b3, b4, b5, b6, b7, b8, b9, b10, tint) = Wilhoit2NASA_TintOpt(cp0, cpInf, B, a0, a1, a2, a3, Tmin, Tmax, Tintg)
-    (b1, b2, b3, b4, b5, b6, b7, b8, b9, b10) = Wilhoit2NASA(cp0, cpInf, B, a0, a1, a2, a3, Tmin, Tmax, Tintg)
-    TintOpt_objFun(Tintg, cp0, cpInf, B, a0, a1, a2, a3, Tmin, Tmax) #to print the objective function value
-    print rmsErrNASA(t, cp, b1, b2, b3, b4, b5, b6, b7, b8, b9, b10, Tintg) 
-
-    #restore to conventional units of K for Tint and units based on K rather than kK in NASA polynomial coefficients
-    #tint=tint*1000.
-    #t = [x*1000. for x in t] 
-    b2 = b2/1000.
-    b7 = b7/1000.
-    b3 = b3/1000000.
-    b8 = b8/1000000.
-    b4 = b4/1000000000.
-    b9 = b9/1000000000.
-    b5 = b5/1000000000000.
-    b10= b10/1000000000000.
-
-
-
-    #return b1, b2, b3, b4, b5, b6, b7, b8, b9, b10, tint
-    return b1, b2, b3, b4, b5, b6, b7, b8, b9, b10
 
 def rmsErrNASA(t, cp, b1, b2, b3, b4, b5, b6, b7, b8, b9, b10, tint):
 	#calculate the RMS error between the NASA polynomial and training data points in non-dimensional units (/R); cp is Cp/R; units of tint, t, and bi should be consistent, based, for example on kK or K 
@@ -168,7 +128,6 @@ def WilhoitFit(t, cp, cp0, cpInf, B):
     #b = mx1
     #x = 4x1
 
-    #from scipy import zeros
     A = scipy.zeros([m,4])
     b = scipy.zeros([m,1])
     for i in range(m):
@@ -180,13 +139,12 @@ def WilhoitFit(t, cp, cp0, cpInf, B):
         b[i] = (cp[i]-cp0)/(cpInf-cp0) - y*y
     #solve least squares problem A*x = b
     #http://docs.scipy.org/doc/scipy/reference/tutorial/linalg.html#solving-linear-least-squares-problems-and-pseudo-inverses
-   # from linalg import lstsq
     x,resid,rank,sigma = linalg.lstsq(A,b)
     a0 = x[0]
     a1 = x[1]
     a2 = x[2]
     a3 = x[3]
-    print resid
+  #  print resid
     return a0, a1, a2, a3
 
 def Wilhoit2NASA(cp0, cpInf, B, a0, a1, a2, a3, tmin, tmax, tint):
@@ -194,7 +152,6 @@ def Wilhoit2NASA(cp0, cpInf, B, a0, a1, a2, a3, tmin, tmax, tint):
     #output: NASA parameters for Cp/R, b1, b2, b3, b4, b5 (low temp parameters) and b6, b7, b8, b9, b10 (high temp parameters)
 
     #construct 13*13 symmetric A matrix (in A*x = b); other elements will be zero
-    #from scipy import zeros
     A = scipy.zeros([13,13])
     b = scipy.zeros([13,1])
     A[0,0] = 2*(tint - tmin)
@@ -296,7 +253,7 @@ def Wilhoit2NASA(cp0, cpInf, B, a0, a1, a2, a3, tmin, tmax, tint):
     b8 = x[7]
     b9 = x[8]
     b10 = x[9]
-    #return x[0:10]
+
     return b1, b2, b3, b4, b5, b6, b7, b8, b9, b10
     
 def Wilhoit2NASA_TintOpt(cp0, cpInf, B, a0, a1, a2, a3, tmin, tmax, tintg):
@@ -304,12 +261,10 @@ def Wilhoit2NASA_TintOpt(cp0, cpInf, B, a0, a1, a2, a3, tmin, tmax, tintg):
     #output: NASA parameters for Cp/R, b1, b2, b3, b4, b5 (low temp parameters) and b6, b7, b8, b9, b10 (high temp parameters), and Tint
     #1. vary Tint, using Tintg as a starting guess, to minimize TintOpt_objFun
     #from optimize import fminbound
-    #tint = optimize.fminbound(TintOpt_objFun, tmin+0.2, tmax-0.5, args=(cp0, cpInf,B,a0,a1,a2,a3,tmin,tmax))
     tint = optimize.fminbound(TintOpt_objFun, tmin, tmax, args=(cp0, cpInf,B,a0,a1,a2,a3,tmin,tmax))
     #note that we have not used the specified guess, tintg when using this minimization routine
     #2. determine the bi parameters based on the optimized Tint (alternatively, maybe we could have TintOpt_objFun also return these parameters, along with the objective function, which would avoid an extra calculation)
     (b1, b2, b3, b4, b5, b6, b7, b8, b9, b10) = Wilhoit2NASA(cp0,cpInf,B,a0,a1,a2,a3,tmin,tmax,tint)
-    #bvec = Wilhoit2NASA(cp0,cpInf,B,a0,a1,a2,a3,tmin,tmax,tint)
     return b1, b2, b3, b4, b5, b6, b7, b8, b9, b10, tint
                                                                                                     
 def TintOpt_objFun(tint, cp0, cpInf, B, a0, a1, a2, a3, tmin, tmax):
