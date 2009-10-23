@@ -131,7 +131,7 @@ def WilhoitFit(t, cp, cp0, cpInf, B):
     #x = 4x1
 
     A = scipy.zeros([m,4])
-    b = scipy.zeros([m,1])
+    b = scipy.zeros(m)
     for i in range(m):
         y = t[i]/(t[i]+B)
         A[i,0] = y*y*(y-1)*(cpInf-cp0)
@@ -166,7 +166,7 @@ def Wilhoit2NASA_NW(cp0, cpInf, B, a0, a1, a2, a3, tmin, tmax, tint):
 
     #construct 13*13 symmetric A matrix (in A*x = b); other elements will be zero
     A = scipy.zeros([13,13])
-    b = scipy.zeros([13,1])
+    b = scipy.zeros(13)
     A[0,0] = 2*(tint - tmin)
     A[0,1] = tint*tint - tmin*tmin
     A[0,2] = 2.*(tint*tint*tint - tmin*tmin*tmin)/3
@@ -276,7 +276,7 @@ def Wilhoit2NASA_W(cp0, cpInf, B, a0, a1, a2, a3, tmin, tmax, tint):
 
     #construct 13*13 symmetric A matrix (in A*x = b); other elements will be zero
     A = scipy.zeros([13,13])
-    b = scipy.zeros([13,1])
+    b = scipy.zeros(13)
 
     A[0,0] = 2*math.log(tint/tmin)
     A[0,1] = 2*(tint - tmin)
